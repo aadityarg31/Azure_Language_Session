@@ -45,13 +45,22 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         logging.exception("Original Azure AI Language calls failed")
         return _json_response({"error": "Azure AI Language request failed. Check key/endpoint/quota."}, 502)
 
-    # 2. New Assignment Task: Language Detection
+        # 2. New Assignment Task: Language Detection
     try:
         lang_doc = _call_language("LanguageDetection", text)["results"]["documents"][0]
-        detected_language = lang_doc.get("primaryLanguage", {}).get("name", "Unknown")
+        
+        # FIX IS HERE: Look inside the 'detectedLanguage' or 'detectedLanguages' array
+        detected_languages_list = lang_doc.get("detectedLanguages", [])
+        if detected_languages_list:
+            detected_language = detected_languages_list[0].get("name", "Unknown")
+        else:
+            # Fallback check for single object dictionary structure
+            detected_language = lang_doc.get("detectedLanguage", {}).get("name", "Unknown")
+            
     except Exception:
         logging.exception("Language Detection failed")
         detected_language = "Unavailable"
+
 
     # 3. New Assignment Task: PII Entity Redaction
     try:

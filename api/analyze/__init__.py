@@ -36,36 +36,52 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     if len(text) > MAX_CHARS:
         return _json_response({"error": f"Text must be {MAX_CHARS} characters or fewer."}, 400)
 
+        # 1. Original Session Tasks (Kept perfectly safe)
     try:
         sentiment_doc = _call_language("SentimentAnalysis", text)["results"]["documents"][0]
         keyphrase_doc = _call_language("KeyPhraseExtraction", text)["results"]["documents"][0]
         entity_doc = _call_language("EntityRecognition", text)["results"]["documents"][0]
-
-        lang_doc = _call_language("LanguageDetection", text)["results"]["documents"][0]
-        pii_doc = _call_language("PiiEntityRecognition", text)["results"]["documents"][0]
-        summary_doc = _call_language("ExtractiveSummarization", text)["results"]["documents"][0]
-        
     except Exception:
-        logging.exception("Azure AI Language call failed")
-        return _json_response(
-            {"error": "Azure AI Language request failed. Check key/endpoint/quota."}, 502
-        )
+        logging.exception("Original Azure AI Language calls failed")
+        return _json_response({"error": "Azure AI Language request failed. Check key/endpoint/quota."}, 502)
 
-    summary_sentences = [s["text"] for s in summary_doc.get("sentences", [])]
-    summary_paragraph = " ".join(summary_sentences)
+    # 2. New Assignment Task: Language Detection
+    try:
+        lang_doc = _call_language("LanguageDetection", text)["results"]["documents"][0]
+        detected_language = lang_doc.get("primaryLanguage", {}).get("name", "Unknown")
+    except Exception:
+        logging.exception("Language Detection failed")
+        detected_language = "Unavailable"
 
+    # 3. New Assignment Task: PII Entity Redaction
+    try:
+        pii_doc = _call_language("PiiEntityRecognition", text)["results"]["documents"][0]
+        redacted_text = pii_doc.get("redactedText", text)
+    except Exception:
+        logging.exception("PII Redaction failed")
+        redacted_text = text
+
+    # 4. New Assignment Task: Summarization (Isolated so it won't crash your web app)
+    try:
+        summary_doc = _call_language("ExtractiveSummarization", text)["results"]["documents"][0]
+        summary_sentences = [s["text"] for s in summary_doc.get("sentences", [])]
+        summary_paragraph = " ".join(summary_sentences)
+    except Exception:
+        logging.exception("Summarization skipped (Requires Asynchronous Job Endpoint)")
+        summary_paragraph = "Summarization requires an Asynchronous Jobs endpoint to execute."
+
+    # 5. Send all data safely to your web page
     result = {
-        "sentiment": sentiment_doc["sentiment"],  # positive | negative | neutral | mixed
+        "sentiment": sentiment_doc["sentiment"],
         "confidenceScores": sentiment_doc["confidenceScores"],
         "keyPhrases": keyphrase_doc.get("keyPhrases", []),
         "entities": [
             {"text": e["text"], "category": e["category"]}
             for e in entity_doc.get("entities", [])
         ],
-
-        "detectedLanguage": lang_doc.get("primaryLanguage", {}).get("name", "Unkown"),
-        "redactedText": pii_doc.get("redactedText", text),
-        "summary": summary_paragraph if summary_paragraph else "No summary available."
+        "detectedLanguage": detected_language,
+        "redactedText": redacted_text,
+        "summary": summary_paragraph
     }
     return _json_response(result, 200)
 

@@ -40,11 +40,19 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         sentiment_doc = _call_language("SentimentAnalysis", text)["results"]["documents"][0]
         keyphrase_doc = _call_language("KeyPhraseExtraction", text)["results"]["documents"][0]
         entity_doc = _call_language("EntityRecognition", text)["results"]["documents"][0]
+
+        lang_doc = _call_language("LanguageDetection", text)["results"]["documents"][0]
+        pii_doc = _call_language("PiiEntityRecognition", text)["results"]["documents"][0]
+        summary_doc = _call_language("ExtractiveSummarization", text)["results"]["documents"][0]
+        
     except Exception:
         logging.exception("Azure AI Language call failed")
         return _json_response(
             {"error": "Azure AI Language request failed. Check key/endpoint/quota."}, 502
         )
+
+    summary_sentences = [s["text"] for s in summary_doc.get("sentences", [])]
+    summary_paragraph = " ".join(summary_sentences)
 
     result = {
         "sentiment": sentiment_doc["sentiment"],  # positive | negative | neutral | mixed
@@ -54,17 +62,30 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             {"text": e["text"], "category": e["category"]}
             for e in entity_doc.get("entities", [])
         ],
+
+        "detectedLanguage": lang_doc.get("primaryLanguage", {}).get("name", "Unkown"),
+        "redactedText": pii_doc.get("redactedText", text),
+        "summary": summary_paragraph if summary_paragraph else "No summary available."
     }
     return _json_response(result, 200)
 
 
 def _call_language(kind: str, text: str) -> dict:
     url = f"{ENDPOINT}/language/:analyze-text?api-version={API_VERSION}"
+
+    payload_parameters = {"modelVersion": "latest"}
+    if kind == "PiiEntityRecognition":
+        payload_parameters["piiCategories"] = ["All"]
+    
     payload = {
         "kind": kind,
-        "parameters": {"modelVersion": "latest"},
-        "analysisInput": {"documents": [{"id": "1", "language": "en", "text": text}]},
+        "parameters": payload_parameters,
+        "analysisInput": {"documents": [{"id": "1", "text": text}]},
     }
+
+    if kind != "LanguageDetection":
+        payload["analysisInput"]["documents"][0]["language"] = "en"
+        
     data = json.dumps(payload).encode("utf-8")
     request = urllib.request.Request(
         url,

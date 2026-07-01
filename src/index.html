@@ -428,6 +428,10 @@
 
     resultsSheet.hidden = false;
     resultsSheet.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    document.getElementById("detectedLanguage").innerText = data.detectedLanguage || "N/A";
+    document.getElementById("redactedText").innerText = data.redactedText || "N/A";
+    document.getElementById("summaryParagraph").innerText = data.summary || "N/A";
   }
 
   function highlightPhrases(text, phrases) {
@@ -450,5 +454,13 @@
       .replace(/>/g, '&gt;');
   }
 </script>
+
+<div id="assignmentResults" style="margin: 20px auto; max-width: 800px; padding: 20px; border: 1px solid #ccc; background-color: #fafafa; border-radius: 8px;">
+  <h3 style="margin-top: 0; color: #1e3a8a;">Assignment Tasks</h3>
+  <p><strong>Detected Language:</strong> <span id="detectedLanguage"></span></p>
+  <p><strong>Redacted Text (PII):</strong> <span id="redactedText" style="font-family: monospace; background: #eee; padding: 2px 4px;"></span></p>
+  <p><strong>AI Summary:</strong> <span id="summaryParagraph"></span></p>
+</div>
+  
 </body>
 </html>
